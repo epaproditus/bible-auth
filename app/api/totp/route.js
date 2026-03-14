@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib'
+import { generate } from 'otplib'
 import { verifyToken } from '@/lib/auth'
 import { SERVICES } from '@/lib/services'
 import { cookies } from 'next/headers'
@@ -30,9 +30,7 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Secret not configured' }, { status: 500 })
   }
 
-  const totp = new TOTP()
-  totp.use(new NobleCryptoPlugin(), new ScureBase32Plugin())
-  const code = totp.generate(secret)
+  const code = await generate({ secret })
   const remaining = 30 - (Math.floor(Date.now() / 1000) % 30)
 
   return NextResponse.json({ code, remaining })

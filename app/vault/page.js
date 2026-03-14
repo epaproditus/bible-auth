@@ -11,7 +11,7 @@ export default function VaultPage() {
         <div className="mb-10">
           <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-1">Vault</p>
           <h1 className="text-xl font-light text-[#c8a84b] tracking-widest">Select service</h1>
-          <p className="text-xs text-[#c8a84b33] mt-2 tracking-wider">You will be asked to read a passage aloud</p>
+          <p className="text-xs text-[#c8a84b33] mt-2 tracking-wider">You will step through a passage before the code appears</p>
         </div>
 
         <div className="space-y-2">

@@ -14,8 +14,9 @@ function ReadPage() {
   const words = verse.text.split(' ')
 
   const [currentWord, setCurrentWord] = useState(0)
-  const [phase, setPhase] = useState('idle') // idle | reading | done | revealed | expired
+  const [phase, setPhase] = useState('idle') // idle | reading | done | revealed | expired | error
   const [code, setCode] = useState(null)
+  const [error, setError] = useState('')
   const [remaining, setRemaining] = useState(30)
   const timerRef = useRef(null)
   const currentWordRef = useRef(0)
@@ -47,10 +48,17 @@ function ReadPage() {
   useEffect(() => () => clearInterval(timerRef.current), [])
 
   async function fetchCode() {
+    clearInterval(timerRef.current)
+    setError('')
     try {
       const res = await fetch(`/api/totp?service=${serviceId}`)
       if (res.status === 401) { router.push('/'); return }
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.code) {
+        setError(data.error || 'Could not retrieve code')
+        setPhase('error')
+        return
+      }
       setCode(data.code)
       setRemaining(data.remaining)
       setPhase('revealed')
@@ -65,7 +73,8 @@ function ReadPage() {
         })
       }, 1000)
     } catch {
-      setPhase('idle')
+      setError('Could not retrieve code')
+      setPhase('error')
     }
   }
 
@@ -74,6 +83,8 @@ function ReadPage() {
     currentWordRef.current = 0
     setCurrentWord(0)
     setCode(null)
+    setError('')
+    setRemaining(30)
     setPhase('idle')
   }
 
@@ -138,10 +149,10 @@ function ReadPage() {
               onClick={() => setPhase('reading')}
               className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors"
             >
-              Begin reading
+              Begin passage
             </button>
             <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
-              Space bar or tap to advance each word
+              Manual gate: tap, space, or arrow key to move through each word
             </p>
           </div>
         )}
@@ -203,6 +214,20 @@ function ReadPage() {
               className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
               Read again
+            </button>
+          </div>
+        )}
+
+        {phase === 'error' && (
+          <div className="text-center">
+            <p className="text-red-400 text-xs tracking-widest uppercase mb-4">
+              {error || 'Could not retrieve code'}
+            </p>
+            <button
+              onClick={reset}
+              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
+            >
+              Try again
             </button>
           </div>
         )}

@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { signToken } from '@/lib/auth'
 
+const sessionCookie = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+}
+
 export async function POST(req) {
   const { password } = await req.json()
 
@@ -12,11 +19,17 @@ export async function POST(req) {
 
   const res = NextResponse.json({ ok: true })
   res.cookies.set('ba_session', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    ...sessionCookie,
     maxAge: 60 * 60 * 12,
-    path: '/',
+  })
+  return res
+}
+
+export async function DELETE() {
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set('ba_session', '', {
+    ...sessionCookie,
+    maxAge: 0,
   })
   return res
 }
