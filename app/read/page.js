@@ -48,13 +48,17 @@ function ReadPage() {
   const [currentWord, setCurrentWord] = useState(0)
   const [phase, setPhase] = useState('idle') // idle | listening | done | revealed | expired | error | unsupported
   const [code, setCode] = useState(null)
+  const [sudoToken, setSudoToken] = useState(null)
+  const [sudoRemaining, setSudoRemaining] = useState(60)
   const [error, setError] = useState('')
   const [heardText, setHeardText] = useState('')
   const [remaining, setRemaining] = useState(30)
   const [animationSeed, setAnimationSeed] = useState(0)
   const [copyState, setCopyState] = useState('idle') // idle | copied | failed
+  const [sudoCopyState, setSudoCopyState] = useState('idle')
 
   const timerRef = useRef(null)
+  const sudoTimerRef = useRef(null)
   const copyTimerRef = useRef(null)
   const currentWordRef = useRef(0)
   const mediaRecorderRef = useRef(null)
@@ -68,6 +72,7 @@ function ReadPage() {
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current)
+      clearInterval(sudoTimerRef.current)
       clearTimeout(copyTimerRef.current)
       stopListening()
     }
@@ -75,6 +80,7 @@ function ReadPage() {
 
   async function fetchCode() {
     clearInterval(timerRef.current)
+    clearInterval(sudoTimerRef.current)
     setError('')
     try {
       const res = await fetch(`/api/totp?service=${serviceId}`)
@@ -91,6 +97,34 @@ function ReadPage() {
       setCopyState('idle')
       setCode(data.code)
       setRemaining(data.remaining)
+
+      // Issue sudo PAM token and write to temp file for PAM module
+      try {
+        const sudoRes = await fetch('/api/auth-token', { method: 'POST' })
+        if (sudoRes.ok) {
+          const sudoData = await sudoRes.json()
+          setSudoToken(sudoData.token)
+          setSudoRemaining(60)
+          setSudoCopyState('idle')
+          // Write token to /tmp/.bible_auth_token so PAM module picks it up
+          await fetch('/api/write-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: sudoData.token }),
+          })
+          sudoTimerRef.current = setInterval(() => {
+            setSudoRemaining(r => {
+              if (r <= 1) {
+                clearInterval(sudoTimerRef.current)
+                setSudoToken(null)
+                return 0
+              }
+              return r - 1
+            })
+          }, 1000)
+        }
+      } catch {}
+
       setPhase('revealed')
       timerRef.current = setInterval(() => {
         setRemaining(r => {
@@ -426,35 +460,67 @@ function ReadPage() {
 
         {phase === 'revealed' && code && (
           <div className="text-center">
+            {/* TOTP code */}
             <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-3">
               {service.name} · one-time code
             </p>
-            <div className="text-5xl font-light tracking-[0.4em] text-[#c8a84b] mb-5 font-mono">
+            <div className="text-5xl font-light tracking-[0.4em] text-[#c8a84b] mb-4 font-mono">
               {code}
             </div>
             <div className="flex items-center justify-center gap-3 mb-6">
               <div className="w-28 h-px bg-[#1a1a1a]">
-                <div
-                  className="h-px bg-[#c8a84b66] transition-all duration-1000"
-                  style={{ width: `${(remaining / 30) * 100}%` }}
-                />
+                <div className="h-px bg-[#c8a84b66] transition-all duration-1000"
+                  style={{ width: `${(remaining / 30) * 100}%` }} />
               </div>
               <span className="text-[#c8a84b33] text-xs font-mono">{remaining}s</span>
             </div>
-            <div className="flex items-center justify-center gap-4">
-              <button
-                onClick={() => { void copyCode() }}
-                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
-              >
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <button onClick={() => { void copyCode() }}
+                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors">
                 {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy code'}
               </button>
-              <button
-                onClick={() => router.push('/vault')}
-                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
-              >
+              <button onClick={() => router.push('/vault')}
+                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors">
                 Done
               </button>
             </div>
+
+            {/* Sudo PAM token */}
+            {sudoToken && (
+              <div className="border border-[#c8a84b22] p-5 mt-2">
+                <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-3">
+                  sudo token · run bible_auth_check
+                </p>
+                <div className="text-xs font-mono text-[#c8a84b88] break-all mb-3 px-2">
+                  {sudoToken}
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="w-20 h-px bg-[#1a1a1a]">
+                    <div className="h-px bg-[#c8a84b33] transition-all duration-1000"
+                      style={{ width: `${(sudoRemaining / 60) * 100}%` }} />
+                  </div>
+                  <span className="text-[#c8a84b22] text-xs font-mono">{sudoRemaining}s</span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(sudoToken)
+                        setSudoCopyState('copied')
+                        setTimeout(() => setSudoCopyState('idle'), 1500)
+                      } catch {
+                        setSudoCopyState('failed')
+                        setTimeout(() => setSudoCopyState('idle'), 1500)
+                      }
+                    }}
+                    className="text-xs tracking-[0.15em] text-[#c8a84b22] hover:text-[#c8a84b55] uppercase transition-colors"
+                  >
+                    {sudoCopyState === 'copied' ? 'Copied' : sudoCopyState === 'failed' ? 'Failed' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {!sudoToken && sudoRemaining === 0 && (
+              <p className="text-[#c8a84b22] text-xs tracking-widest uppercase mt-2">sudo token expired</p>
+            )}
           </div>
         )}
 
