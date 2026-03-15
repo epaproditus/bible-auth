@@ -1,12 +1,13 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { SERVICES } from '@/lib/services'
 import {
+  createCustomVault,
   getUnlockedSessionServices,
   hasEncryptedCustomVault,
+  isCustomVaultUnlocked,
+  lockCustomVault,
   saveCustomVault,
-  setUnlockedSessionServices,
   unlockCustomVault,
 } from '@/lib/custom-vault'
 
@@ -36,7 +37,6 @@ function makeCustomId() {
 
 export default function VaultPage() {
   const router = useRouter()
-
   const [query, setQuery] = useState('')
   const [favorites, setFavorites] = useState([])
   const [lastUsed, setLastUsed] = useState({})
@@ -67,7 +67,7 @@ export default function VaultPage() {
       setHasEncryptedVault(encryptedExists)
 
       const unlockedSession = getUnlockedSessionServices()
-      if (unlockedSession.length > 0) {
+      if (isCustomVaultUnlocked()) {
         setCustomServices(unlockedSession)
         setVaultUnlocked(true)
       } else {
@@ -98,9 +98,8 @@ export default function VaultPage() {
     setVaultError('')
     try {
       if (!hasEncryptedVault) {
-        await saveCustomVault([], vaultPassphrase)
-        setCustomServices([])
-        setUnlockedSessionServices([])
+        const created = await createCustomVault(vaultPassphrase)
+        setCustomServices(created)
         setHasEncryptedVault(true)
         setVaultUnlocked(true)
         return
@@ -108,7 +107,6 @@ export default function VaultPage() {
 
       const decrypted = await unlockCustomVault(vaultPassphrase)
       setCustomServices(decrypted)
-      setUnlockedSessionServices(decrypted)
       setVaultUnlocked(true)
     } catch {
       setVaultError('Passphrase is incorrect')
@@ -118,17 +116,16 @@ export default function VaultPage() {
   }
 
   async function persistCustomServices(next) {
-    if (!vaultPassphrase.trim()) {
-      setVaultError('Enter passphrase to save changes')
+    if (!vaultUnlocked) {
+      setVaultError('Unlock custom vault first')
       return false
     }
 
     setBusy(true)
     setVaultError('')
     try {
-      await saveCustomVault(next, vaultPassphrase)
+      await saveCustomVault(next)
       setCustomServices(next)
-      setUnlockedSessionServices(next)
       return true
     } catch {
       setVaultError('Could not save custom services')
@@ -149,12 +146,7 @@ export default function VaultPage() {
   function beginRecitation(service) {
     const next = { ...lastUsed, [service.id]: Date.now() }
     persistLastUsed(next)
-
-    const target = service.source === 'custom'
-      ? `/read?service=${service.id}&source=custom`
-      : `/read?service=${service.id}`
-
-    router.push(target)
+    router.push(`/read?service=${service.id}`)
   }
 
   async function addCustomService(e) {
@@ -172,7 +164,6 @@ export default function VaultPage() {
       name,
       description: newDescription.trim() || 'Custom service',
       secret,
-      source: 'custom',
     }
 
     const next = [...customServices, custom]
@@ -197,11 +188,7 @@ export default function VaultPage() {
   const visibleServices = useMemo(() => {
     const lowered = query.trim().toLowerCase()
 
-    const custom = customServices.map((service) => ({ ...service, source: 'custom' }))
-    const env = SERVICES.map((service) => ({ ...service, source: 'env' }))
-    const pool = [...env, ...custom]
-
-    const filtered = pool.filter((service) => {
+    const filtered = customServices.filter((service) => {
       if (!lowered) return true
       return (
         service.name.toLowerCase().includes(lowered) ||
@@ -238,9 +225,11 @@ export default function VaultPage() {
             </p>
           </div>
           <button
-            onClick={async () => {
-              await fetch('/api/login', { method: 'DELETE' })
-              router.push('/')
+            onClick={() => {
+              lockCustomVault()
+              setVaultUnlocked(false)
+              setCustomServices([])
+              setVaultPassphrase('')
             }}
             className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors mt-1"
           >
@@ -276,7 +265,7 @@ export default function VaultPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <div className="border border-[#c8a84b1f] bg-[#c8a84b05] px-4 py-3">
             <p className="text-[#c8a84b33] text-[10px] uppercase tracking-[0.24em]">Items</p>
-            <p className="text-[#c8a84b] text-lg mt-1">{SERVICES.length + customServices.length}</p>
+            <p className="text-[#c8a84b] text-lg mt-1">{customServices.length}</p>
           </div>
           <div className="border border-[#c8a84b1f] bg-[#c8a84b05] px-4 py-3">
             <p className="text-[#c8a84b33] text-[10px] uppercase tracking-[0.24em]">Favorites</p>
@@ -366,7 +355,7 @@ export default function VaultPage() {
                   {service.description}
                 </p>
                 <div className="mt-2 flex items-center gap-3 text-[10px] tracking-[0.18em] uppercase text-[#c8a84b33]">
-                  <span>{service.source === 'custom' ? 'Custom' : 'Managed'}</span>
+                  <span>Custom</span>
                   <span>Last used {hydrated ? formatLastUsed(service.seenAt) : '...'}</span>
                 </div>
               </button>
@@ -379,15 +368,13 @@ export default function VaultPage() {
                 >
                   {service.pinned ? '★' : '☆'}
                 </button>
-                {service.source === 'custom' && (
-                  <button
-                    onClick={() => { void deleteCustomService(service.id) }}
-                    disabled={busy}
-                    className="h-9 px-3 border border-[#c8a84b22] text-[#c8a84b44] text-xs tracking-[0.12em] uppercase hover:border-red-400/40 hover:text-red-300 transition-colors disabled:opacity-40"
-                  >
-                    Delete
-                  </button>
-                )}
+                <button
+                  onClick={() => { void deleteCustomService(service.id) }}
+                  disabled={busy}
+                  className="h-9 px-3 border border-[#c8a84b22] text-[#c8a84b44] text-xs tracking-[0.12em] uppercase hover:border-red-400/40 hover:text-red-300 transition-colors disabled:opacity-40"
+                >
+                  Delete
+                </button>
                 <button
                   onClick={() => beginRecitation(service)}
                   className="h-9 px-4 border border-[#c8a84b33] text-[#c8a84b] text-xs tracking-[0.16em] uppercase hover:bg-[#c8a84b10] transition-colors"

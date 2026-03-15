@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createGuardrails, generate } from 'otplib'
-import { SERVICES } from '@/lib/services'
 import { getUnlockedSessionServices } from '@/lib/custom-vault'
 
 function normalizeWord(word) {
@@ -57,11 +56,8 @@ function ReadPage() {
   const router = useRouter()
   const params = useSearchParams()
   const serviceId = params.get('service')
-  const source = params.get('source') || 'env'
   const [customServices, setCustomServices] = useState([])
-  const service = source === 'custom'
-    ? customServices.find((s) => s.id === serviceId)
-    : SERVICES.find((s) => s.id === serviceId)
+  const service = customServices.find((s) => s.id === serviceId)
 
   const [verse, setVerse] = useState(null)
   const [verseStatus, setVerseStatus] = useState('loading') // loading | ready | error
@@ -107,11 +103,6 @@ function ReadPage() {
 
       try {
         const res = await fetch('/api/verse', { cache: 'no-store' })
-        if (res.status === 401) {
-          router.push('/')
-          return
-        }
-
         const data = await res.json().catch(() => ({}))
         if (!res.ok || !data.text || !data.ref) {
           if (cancelled) return
@@ -137,7 +128,7 @@ function ReadPage() {
     return () => {
       cancelled = true
     }
-  }, [router, verseReloadToken])
+  }, [verseReloadToken])
 
   useEffect(() => {
     return () => {
@@ -159,43 +150,27 @@ function ReadPage() {
       let nextCode = null
       let nextRemaining = 30
 
-      if (source === 'custom') {
-        if (!service?.secret) {
-          setError('Custom service is unavailable. Unlock vault and try again.')
-          setPhase('error')
-          return
-        }
+      if (!service?.secret) {
+        setError('Custom service is unavailable. Unlock vault and try again.')
+        setPhase('error')
+        return
+      }
 
-        const secret = resolveSecret(service.secret)
-        if (!secret) {
-          setError('Custom service secret is invalid')
-          setPhase('error')
-          return
-        }
+      const secret = resolveSecret(service.secret)
+      if (!secret) {
+        setError('Custom service secret is invalid')
+        setPhase('error')
+        return
+      }
 
-        try {
-          const compatibilityGuardrails = createGuardrails({ MIN_SECRET_BYTES: 10 })
-          nextCode = await generate({ secret, guardrails: compatibilityGuardrails })
-          nextRemaining = 30 - (Math.floor(Date.now() / 1000) % 30)
-        } catch {
-          setError('Custom service secret format is invalid')
-          setPhase('error')
-          return
-        }
-      } else {
-        const res = await fetch(`/api/totp?service=${serviceId}`)
-        if (res.status === 401) {
-          router.push('/')
-          return
-        }
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok || !data.code) {
-          setError(data.error || 'Could not retrieve code')
-          setPhase('error')
-          return
-        }
-        nextCode = data.code
-        nextRemaining = data.remaining
+      try {
+        const compatibilityGuardrails = createGuardrails({ MIN_SECRET_BYTES: 10 })
+        nextCode = await generate({ secret, guardrails: compatibilityGuardrails })
+        nextRemaining = 30 - (Math.floor(Date.now() / 1000) % 30)
+      } catch {
+        setError('Custom service secret format is invalid')
+        setPhase('error')
+        return
       }
 
       setCopyState('idle')
@@ -312,7 +287,6 @@ function ReadPage() {
     })
 
     if (res.status === 401) {
-      router.push('/')
       throw new Error('Unauthorized')
     }
 
@@ -485,13 +459,11 @@ function ReadPage() {
       <main className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <p className="text-[#c8a84b44] text-xs tracking-widest">
-            {source === 'custom' ? 'Custom service unavailable' : 'Unknown service'}
+            Custom service unavailable
           </p>
-          {source === 'custom' && (
-            <p className="text-[#c8a84b22] text-xs tracking-wider mt-3">
-              Unlock custom services in vault and try again
-            </p>
-          )}
+          <p className="text-[#c8a84b22] text-xs tracking-wider mt-3">
+            Unlock custom services in vault and try again
+          </p>
         </div>
       </main>
     )
