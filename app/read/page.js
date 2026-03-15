@@ -57,6 +57,7 @@ function ReadPage() {
   const currentWordRef = useRef(0)
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
+  const recordedChunksRef = useRef([])
   const chunkQueueRef = useRef([])
   const processingQueueRef = useRef(false)
   const keepListeningRef = useRef(false)
@@ -105,6 +106,7 @@ function ReadPage() {
 
   function stopListening() {
     keepListeningRef.current = false
+    recordedChunksRef.current = []
     chunkQueueRef.current = []
 
     const recorder = mediaRecorderRef.current
@@ -210,6 +212,7 @@ function ReadPage() {
     setCode(null)
     setRemaining(30)
     chunkQueueRef.current = []
+    recordedChunksRef.current = []
     processingQueueRef.current = false
 
     if (!keepProgress) {
@@ -248,7 +251,11 @@ function ReadPage() {
 
     recorder.ondataavailable = event => {
       if (!event.data || event.data.size <= 0) return
-      chunkQueueRef.current.push(event.data)
+      recordedChunksRef.current.push(event.data)
+      const fullSample = new Blob(recordedChunksRef.current, {
+        type: event.data.type || mimeType || 'audio/webm',
+      })
+      chunkQueueRef.current.push(fullSample)
       void processQueue()
     }
 
@@ -265,7 +272,7 @@ function ReadPage() {
     setHeardText('Listening...')
 
     try {
-      recorder.start(2200)
+      recorder.start(3000)
     } catch {
       setError('Could not start microphone recording')
       setPhase('error')

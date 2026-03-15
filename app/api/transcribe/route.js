@@ -9,6 +9,10 @@ function getErrorMessage(status, body, provider) {
     if (body.error?.message) return body.error.message
     if (body.message) return body.message
     if (typeof body.detail === 'string') return body.detail
+    if (body.detail && typeof body.detail === 'object') {
+      if (typeof body.detail.message === 'string') return body.detail.message
+      if (typeof body.detail.code === 'string') return body.detail.code
+    }
   }
   if (status === 401) {
     if (provider === 'elevenlabs') return 'ELEVENLABS_API_KEY is invalid'
