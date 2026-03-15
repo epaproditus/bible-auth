@@ -1,7 +1,6 @@
 'use client'
-'use client'
 import { useEffect, useRef, useState } from 'react'
-import { VERSES } from '@/lib/verses'
+import { pickRandomVerse } from '@/lib/verses'
 
 function normalizeWord(w) {
   return w.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -22,7 +21,7 @@ function ext(mime) {
 }
 
 export default function SudoPage() {
-  const [verse] = useState(() => VERSES[Math.floor(Math.random() * VERSES.length)])
+  const [verse, setVerse] = useState(() => pickRandomVerse())
   const words = verse.text.split(' ')
   const normalized = words.map(normalizeWord)
 
@@ -42,6 +41,27 @@ export default function SudoPage() {
   const doneRef = useRef(false)
 
   useEffect(() => () => stopListening(), [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadVerse() {
+      try {
+        const res = await fetch('/api/verse', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({}))
+        if (!data.text || !data.ref) return
+        if (cancelled || currentWordRef.current > 0 || keepGoingRef.current || doneRef.current) return
+        setVerse({ ref: data.ref, text: data.text })
+      } catch {}
+    }
+
+    void loadVerse()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function stopListening() {
     keepGoingRef.current = false

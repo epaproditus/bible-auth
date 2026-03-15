@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createGuardrails, generate } from 'otplib'
-import { VERSES } from '@/lib/verses'
+import { pickRandomVerse } from '@/lib/verses'
 import { SERVICES } from '@/lib/services'
 import { getUnlockedSessionServices } from '@/lib/custom-vault'
 
@@ -64,7 +64,7 @@ function ReadPage() {
     ? customServices.find((s) => s.id === serviceId)
     : SERVICES.find((s) => s.id === serviceId)
 
-  const [verse] = useState(() => VERSES[Math.floor(Math.random() * VERSES.length)])
+  const [verse, setVerse] = useState(() => pickRandomVerse())
   const words = verse.text.split(' ')
   const normalizedWords = words.map(normalizeWord)
 
@@ -95,6 +95,32 @@ function ReadPage() {
   useEffect(() => {
     setCustomServices(getUnlockedSessionServices())
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadVerse() {
+      try {
+        const res = await fetch('/api/verse', { cache: 'no-store' })
+        if (res.status === 401) {
+          router.push('/')
+          return
+        }
+
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.text || !data.ref) return
+        if (cancelled) return
+        if (currentWordRef.current > 0 || keepListeningRef.current || completedRef.current) return
+        setVerse({ ref: data.ref, text: data.text })
+      } catch {}
+    }
+
+    void loadVerse()
+
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   useEffect(() => {
     return () => {
