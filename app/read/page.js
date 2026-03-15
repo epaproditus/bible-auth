@@ -40,6 +40,9 @@ function ReadPage() {
   const keepListeningRef = useRef(false)
   const suppressAbortErrorRef = useRef(false)
   const completedRef = useRef(false)
+  const preferLocalRecognitionRef = useRef(false)
+  const networkRetryCountRef = useRef(0)
+  const startLockRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -101,7 +104,7 @@ function ReadPage() {
         : errorCode === 'audio-capture'
           ? 'No microphone was found on this device.'
           : errorCode === 'network'
-            ? 'Speech recognition network error. Check your connection and retry.'
+            ? 'Speech service is unreachable in this browser right now.'
             : errorCode === 'language-not-supported'
               ? 'Speech recognition language is not supported in this browser.'
               : errorCode === 'start-failed'
@@ -143,82 +146,151 @@ function ReadPage() {
     }
   }
 
-  function startListening() {
-    clearInterval(timerRef.current)
-    stopListening({ manual: true })
-    setError('')
-    setHeardText('')
-    setCode(null)
-    setRemaining(30)
-    completedRef.current = false
-    currentWordRef.current = 0
-    setCurrentWord(0)
-    setAnimationSeed(s => s + 1)
+  async function prepareRecognitionMode(SpeechRecognition, recognition) {
+    if (!preferLocalRecognitionRef.current) return
+    if (!('processLocally' in recognition)) return
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      setPhase('unsupported')
-      return
+    try {
+      if (typeof SpeechRecognition.available === 'function') {
+        const status = await SpeechRecognition.available({ langs: ['en-US'], processLocally: true })
+        if (status !== 'available') {
+          if ((status === 'downloadable' || status === 'downloading') && typeof SpeechRecognition.install === 'function') {
+            setHeardText('Preparing local speech model...')
+            const installed = await SpeechRecognition.install({ langs: ['en-US'] })
+            if (!installed) {
+              preferLocalRecognitionRef.current = false
+              return
+            }
+          } else {
+            preferLocalRecognitionRef.current = false
+            return
+          }
+        }
+      }
+      recognition.processLocally = true
+      setHeardText('Using local speech engine...')
+    } catch {
+      preferLocalRecognitionRef.current = false
     }
+  }
 
-    const recognition = new SpeechRecognition()
-    recognition.continuous = false
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-    recognition.maxAlternatives = 1
+  async function startListening({ keepProgress = false } = {}) {
+    if (startLockRef.current) return
+    startLockRef.current = true
 
-    recognition.onresult = event => {
-      let finalChunk = ''
-      let interimChunk = ''
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const transcript = event.results[i][0]?.transcript?.trim() || ''
-        if (!transcript) continue
-        if (event.results[i].isFinal) finalChunk += ` ${transcript}`
-        else interimChunk += ` ${transcript}`
+    try {
+      clearInterval(timerRef.current)
+      stopListening({ manual: true })
+      setError('')
+      setCode(null)
+      setRemaining(30)
+      if (!keepProgress) {
+        setHeardText('')
+        completedRef.current = false
+        currentWordRef.current = 0
+        setCurrentWord(0)
+        setAnimationSeed(s => s + 1)
       }
 
-      const chunk = (finalChunk || interimChunk).trim()
-      if (!chunk) return
-      setHeardText(chunk)
-      advanceFromSpeech(chunk)
-    }
-
-    recognition.onerror = event => {
-      const errorCode = event.error || 'unknown'
-      if (errorCode === 'aborted' && suppressAbortErrorRef.current) return
-      if (errorCode === 'no-speech') {
-        setHeardText('...')
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (!SpeechRecognition) {
+        setPhase('unsupported')
         return
       }
-      handleRecognitionError(errorCode)
-    }
 
-    recognition.onend = () => {
-      if (!keepListeningRef.current || completedRef.current) return
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+      recognition.maxAlternatives = 1
+
+      await prepareRecognitionMode(SpeechRecognition, recognition)
+
+      recognition.onstart = () => {
+        networkRetryCountRef.current = 0
+      }
+
+      recognition.onresult = event => {
+        let finalChunk = ''
+        let interimChunk = ''
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const transcript = event.results[i][0]?.transcript?.trim() || ''
+          if (!transcript) continue
+          if (event.results[i].isFinal) finalChunk += ` ${transcript}`
+          else interimChunk += ` ${transcript}`
+        }
+
+        const chunk = (finalChunk || interimChunk).trim()
+        if (!chunk) return
+        setHeardText(chunk)
+        advanceFromSpeech(chunk)
+      }
+
+      recognition.onerror = event => {
+        const errorCode = event.error || 'unknown'
+
+        if (errorCode === 'aborted' && suppressAbortErrorRef.current) return
+        if (errorCode === 'no-speech') {
+          setHeardText('...')
+          return
+        }
+
+        if (errorCode === 'network' && networkRetryCountRef.current < 2) {
+          networkRetryCountRef.current += 1
+          keepListeningRef.current = false
+          if (networkRetryCountRef.current === 1) {
+            preferLocalRecognitionRef.current = true
+            setHeardText('Network speech failed. Trying local engine...')
+          } else {
+            setHeardText('Retrying speech service...')
+          }
+          setTimeout(() => {
+            void startListening({ keepProgress: true })
+          }, 500)
+          return
+        }
+
+        if (errorCode === 'language-not-supported' && preferLocalRecognitionRef.current) {
+          preferLocalRecognitionRef.current = false
+          setHeardText('Local engine unavailable. Falling back...')
+          setTimeout(() => {
+            void startListening({ keepProgress: true })
+          }, 450)
+          return
+        }
+
+        handleRecognitionError(errorCode)
+      }
+
+      recognition.onend = () => {
+        if (!keepListeningRef.current || completedRef.current) return
+        suppressAbortErrorRef.current = false
+        try {
+          recognition.start()
+        } catch {
+          setTimeout(() => {
+            if (!keepListeningRef.current || completedRef.current) return
+            try {
+              recognition.start()
+            } catch {
+              handleRecognitionError('start-failed')
+            }
+          }, 240)
+        }
+      }
+
+      recognitionRef.current = recognition
+      keepListeningRef.current = true
       suppressAbortErrorRef.current = false
+      setPhase('listening')
+
       try {
         recognition.start()
       } catch {
-        setTimeout(() => {
-          if (!keepListeningRef.current || completedRef.current) return
-          try {
-            recognition.start()
-          } catch {
-            handleRecognitionError('start-failed')
-          }
-        }, 240)
+        handleRecognitionError('start-failed')
       }
-    }
-
-    recognitionRef.current = recognition
-    keepListeningRef.current = true
-    suppressAbortErrorRef.current = false
-    setPhase('listening')
-
-    try {
-      recognition.start()
-    } catch {
-      handleRecognitionError('start-failed')
+    } finally {
+      startLockRef.current = false
     }
   }
 
@@ -227,6 +299,7 @@ function ReadPage() {
     stopListening({ manual: true })
     currentWordRef.current = 0
     completedRef.current = false
+    networkRetryCountRef.current = 0
     setCurrentWord(0)
     setCode(null)
     setError('')
@@ -295,7 +368,7 @@ function ReadPage() {
         {phase === 'idle' && (
           <div className="text-center">
             <button
-              onClick={startListening}
+              onClick={() => { void startListening() }}
               className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors"
             >
               Begin recitation
@@ -390,7 +463,7 @@ function ReadPage() {
               {error || 'Could not retrieve code'}
             </p>
             <button
-              onClick={startListening}
+              onClick={() => { void startListening({ keepProgress: true }) }}
               className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
               Try again
