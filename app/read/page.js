@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createGuardrails, generate } from 'otplib'
-import { pickRandomVerse } from '@/lib/verses'
 import { SERVICES } from '@/lib/services'
 import { getUnlockedSessionServices } from '@/lib/custom-vault'
 
@@ -64,8 +63,11 @@ function ReadPage() {
     ? customServices.find((s) => s.id === serviceId)
     : SERVICES.find((s) => s.id === serviceId)
 
-  const [verse, setVerse] = useState(() => pickRandomVerse())
-  const words = verse.text.split(' ')
+  const [verse, setVerse] = useState(null)
+  const [verseStatus, setVerseStatus] = useState('loading') // loading | ready | error
+  const [verseLoadError, setVerseLoadError] = useState('')
+  const [verseReloadToken, setVerseReloadToken] = useState(0)
+  const words = verse?.text ? verse.text.split(' ') : []
   const normalizedWords = words.map(normalizeWord)
 
   const [currentWord, setCurrentWord] = useState(0)
@@ -100,6 +102,9 @@ function ReadPage() {
     let cancelled = false
 
     async function loadVerse() {
+      setVerseStatus('loading')
+      setVerseLoadError('')
+
       try {
         const res = await fetch('/api/verse', { cache: 'no-store' })
         if (res.status === 401) {
@@ -108,11 +113,23 @@ function ReadPage() {
         }
 
         const data = await res.json().catch(() => ({}))
-        if (!res.ok || !data.text || !data.ref) return
+        if (!res.ok || !data.text || !data.ref) {
+          if (cancelled) return
+          setVerse(null)
+          setVerseStatus('error')
+          setVerseLoadError(data.error || 'Could not load Recovery Version verse')
+          return
+        }
         if (cancelled) return
         if (currentWordRef.current > 0 || keepListeningRef.current || completedRef.current) return
         setVerse({ ref: data.ref, text: data.text })
-      } catch {}
+        setVerseStatus('ready')
+      } catch {
+        if (cancelled) return
+        setVerse(null)
+        setVerseStatus('error')
+        setVerseLoadError('Could not load Recovery Version verse')
+      }
     }
 
     void loadVerse()
@@ -120,7 +137,7 @@ function ReadPage() {
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [router, verseReloadToken])
 
   useEffect(() => {
     return () => {
@@ -331,6 +348,12 @@ function ReadPage() {
   }
 
   async function startListening({ keepProgress = false } = {}) {
+    if (!verse || words.length === 0) {
+      setError('Recovery verse not loaded yet')
+      setPhase('error')
+      return
+    }
+
     clearInterval(timerRef.current)
     clearInterval(sudoTimerRef.current)
     stopListening()
@@ -474,7 +497,7 @@ function ReadPage() {
     )
   }
 
-  const progress = Math.round((currentWord / words.length) * 100)
+  const progress = words.length > 0 ? Math.round((currentWord / words.length) * 100) : 0
 
   return (
     <main className="min-h-screen bg-black flex flex-col items-center justify-center px-6 py-12">
@@ -488,7 +511,9 @@ function ReadPage() {
           </button>
           <div className="text-right">
             <p className="text-[#c8a84b] text-xs tracking-[0.2em] uppercase">{service.name}</p>
-            <p className="text-[#c8a84b33] text-xs tracking-wider mt-1">{verse.ref}</p>
+            <p className="text-[#c8a84b33] text-xs tracking-wider mt-1">
+              {verse?.ref || (verseStatus === 'loading' ? 'Loading verse...' : 'Verse unavailable')}
+            </p>
           </div>
         </div>
 
@@ -526,13 +551,26 @@ function ReadPage() {
           <div className="text-center">
             <button
               onClick={() => { void startListening() }}
-              className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors"
+              disabled={verseStatus !== 'ready'}
+              className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              Begin recitation
+              {verseStatus === 'loading' ? 'Loading verse...' : 'Begin recitation'}
             </button>
             <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
-              Server transcription mode: speak each word in order to advance
+              {verseStatus === 'ready'
+                ? 'Server transcription mode: speak each word in order to advance'
+                : verseStatus === 'loading'
+                  ? 'Fetching Recovery Version verse'
+                  : verseLoadError || 'Recovery Version verse unavailable'}
             </p>
+            {verseStatus === 'error' && (
+              <button
+                onClick={() => setVerseReloadToken((v) => v + 1)}
+                className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+              >
+                Retry verse load
+              </button>
+            )}
           </div>
         )}
 

@@ -22,17 +22,19 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url)
   const requestedRef = searchParams.get('ref')?.trim() || ''
 
-  const fallbackVerse = findVerseByRef(requestedRef) || pickRandomVerse()
-  const referenceToLoad = requestedRef || fallbackVerse.ref
+  const seedVerse = findVerseByRef(requestedRef) || pickRandomVerse()
+  const referenceToLoad = requestedRef || seedVerse.ref
 
   const remoteVerse = await fetchRecoveryVerse(referenceToLoad)
   if (remoteVerse) {
     return NextResponse.json({ ...remoteVerse, source: 'recovery-api' })
   }
 
-  return NextResponse.json({
-    ref: fallbackVerse.ref,
-    text: fallbackVerse.text,
-    source: 'fallback-local',
-  })
+  return NextResponse.json(
+    {
+      error: 'Recovery Version API did not return a verse',
+      requestedRef: referenceToLoad,
+    },
+    { status: 502 },
+  )
 }
