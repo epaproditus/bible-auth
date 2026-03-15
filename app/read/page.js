@@ -352,7 +352,7 @@ function ReadPage() {
               Begin recitation
             </button>
             <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
-              Whisper mode: speak each word in order to advance
+              Server transcription mode: speak each word in order to advance
             </p>
           </div>
         )}
