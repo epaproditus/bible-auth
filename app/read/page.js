@@ -16,6 +16,25 @@ function tokenizeSpokenText(text) {
     .filter(Boolean)
 }
 
+function pickRecorderMimeType() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+  ]
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type
+  }
+  return ''
+}
+
+function extensionForMime(type) {
+  if (type.includes('webm')) return 'webm'
+  if (type.includes('mp4') || type.includes('m4a')) return 'm4a'
+  if (type.includes('ogg')) return 'ogg'
+  return 'webm'
+}
+
 function ReadPage() {
   const router = useRouter()
   const params = useSearchParams()
@@ -36,18 +55,17 @@ function ReadPage() {
 
   const timerRef = useRef(null)
   const currentWordRef = useRef(0)
-  const recognitionRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const mediaStreamRef = useRef(null)
+  const chunkQueueRef = useRef([])
+  const processingQueueRef = useRef(false)
   const keepListeningRef = useRef(false)
-  const suppressAbortErrorRef = useRef(false)
   const completedRef = useRef(false)
-  const preferLocalRecognitionRef = useRef(false)
-  const networkRetryCountRef = useRef(0)
-  const startLockRef = useRef(false)
 
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current)
-      stopListening({ manual: true })
+      stopListening()
     }
   }, [])
 
@@ -85,41 +103,33 @@ function ReadPage() {
     }
   }
 
-  function stopListening({ manual = false } = {}) {
+  function stopListening() {
     keepListeningRef.current = false
-    suppressAbortErrorRef.current = manual
-    const recognition = recognitionRef.current
-    recognitionRef.current = null
-    if (recognition) {
+    chunkQueueRef.current = []
+
+    const recorder = mediaRecorderRef.current
+    mediaRecorderRef.current = null
+    if (recorder && recorder.state !== 'inactive') {
       try {
-        recognition.stop()
+        recorder.stop()
       } catch {}
     }
-  }
 
-  function handleRecognitionError(errorCode) {
-    const message =
-      errorCode === 'not-allowed' || errorCode === 'service-not-allowed'
-        ? 'Microphone permission denied. Allow access and try again.'
-        : errorCode === 'audio-capture'
-          ? 'No microphone was found on this device.'
-          : errorCode === 'network'
-            ? 'Speech service is unreachable in this browser right now.'
-            : errorCode === 'language-not-supported'
-              ? 'Speech recognition language is not supported in this browser.'
-              : errorCode === 'start-failed'
-                ? 'Could not start speech recognition. Try refreshing and retry.'
-                : `Speech recognition error (${errorCode}). Try again.`
-
-    keepListeningRef.current = false
-    setError(message)
-    setPhase('error')
+    const stream = mediaStreamRef.current
+    mediaStreamRef.current = null
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        try {
+          track.stop()
+        } catch {}
+      }
+    }
   }
 
   function completePassage() {
     if (completedRef.current) return
     completedRef.current = true
-    stopListening({ manual: true })
+    stopListening()
     setPhase('done')
     fetchCode()
   }
@@ -146,160 +156,128 @@ function ReadPage() {
     }
   }
 
-  async function prepareRecognitionMode(SpeechRecognition, recognition) {
-    if (!preferLocalRecognitionRef.current) return
-    if (!('processLocally' in recognition)) return
+  async function transcribeChunk(blob) {
+    const mimeType = blob.type || 'audio/webm'
+    const extension = extensionForMime(mimeType)
+    const form = new FormData()
+    form.append('audio', new File([blob], `chunk.${extension}`, { type: mimeType }))
+
+    const res = await fetch('/api/transcribe', {
+      method: 'POST',
+      body: form,
+    })
+
+    if (res.status === 401) {
+      router.push('/')
+      throw new Error('Unauthorized')
+    }
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || 'Transcription failed')
+    }
+
+    return typeof data.text === 'string' ? data.text : ''
+  }
+
+  async function processQueue() {
+    if (processingQueueRef.current) return
+    processingQueueRef.current = true
 
     try {
-      if (typeof SpeechRecognition.available === 'function') {
-        const status = await SpeechRecognition.available({ langs: ['en-US'], processLocally: true })
-        if (status !== 'available') {
-          if ((status === 'downloadable' || status === 'downloading') && typeof SpeechRecognition.install === 'function') {
-            setHeardText('Preparing local speech model...')
-            const installed = await SpeechRecognition.install({ langs: ['en-US'] })
-            if (!installed) {
-              preferLocalRecognitionRef.current = false
-              return
-            }
-          } else {
-            preferLocalRecognitionRef.current = false
-            return
-          }
-        }
+      while (keepListeningRef.current && chunkQueueRef.current.length > 0) {
+        const chunk = chunkQueueRef.current.shift()
+        const text = await transcribeChunk(chunk)
+        if (!text) continue
+        setHeardText(text)
+        advanceFromSpeech(text)
       }
-      recognition.processLocally = true
-      setHeardText('Using local speech engine...')
-    } catch {
-      preferLocalRecognitionRef.current = false
+    } catch (err) {
+      if (keepListeningRef.current && !completedRef.current) {
+        setError(err?.message || 'Transcription failed')
+        setPhase('error')
+        stopListening()
+      }
+    } finally {
+      processingQueueRef.current = false
     }
   }
 
   async function startListening({ keepProgress = false } = {}) {
-    if (startLockRef.current) return
-    startLockRef.current = true
+    clearInterval(timerRef.current)
+    stopListening()
+    setError('')
+    setCode(null)
+    setRemaining(30)
+    chunkQueueRef.current = []
+    processingQueueRef.current = false
+
+    if (!keepProgress) {
+      setHeardText('')
+      completedRef.current = false
+      currentWordRef.current = 0
+      setCurrentWord(0)
+      setAnimationSeed(s => s + 1)
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setPhase('unsupported')
+      return
+    }
+
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+    } catch {
+      setError('Microphone permission denied. Allow access and try again.')
+      setPhase('error')
+      return
+    }
+
+    mediaStreamRef.current = stream
+    const mimeType = pickRecorderMimeType()
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream)
+
+    recorder.ondataavailable = event => {
+      if (!event.data || event.data.size <= 0) return
+      chunkQueueRef.current.push(event.data)
+      void processQueue()
+    }
+
+    recorder.onerror = () => {
+      if (!keepListeningRef.current) return
+      setError('Microphone recording failed')
+      setPhase('error')
+      stopListening()
+    }
+
+    mediaRecorderRef.current = recorder
+    keepListeningRef.current = true
+    setPhase('listening')
+    setHeardText('Listening...')
 
     try {
-      clearInterval(timerRef.current)
-      stopListening({ manual: true })
-      setError('')
-      setCode(null)
-      setRemaining(30)
-      if (!keepProgress) {
-        setHeardText('')
-        completedRef.current = false
-        currentWordRef.current = 0
-        setCurrentWord(0)
-        setAnimationSeed(s => s + 1)
-      }
-
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-      if (!SpeechRecognition) {
-        setPhase('unsupported')
-        return
-      }
-
-      const recognition = new SpeechRecognition()
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = 'en-US'
-      recognition.maxAlternatives = 1
-
-      await prepareRecognitionMode(SpeechRecognition, recognition)
-
-      recognition.onstart = () => {
-        networkRetryCountRef.current = 0
-      }
-
-      recognition.onresult = event => {
-        let finalChunk = ''
-        let interimChunk = ''
-        for (let i = event.resultIndex; i < event.results.length; i += 1) {
-          const transcript = event.results[i][0]?.transcript?.trim() || ''
-          if (!transcript) continue
-          if (event.results[i].isFinal) finalChunk += ` ${transcript}`
-          else interimChunk += ` ${transcript}`
-        }
-
-        const chunk = (finalChunk || interimChunk).trim()
-        if (!chunk) return
-        setHeardText(chunk)
-        advanceFromSpeech(chunk)
-      }
-
-      recognition.onerror = event => {
-        const errorCode = event.error || 'unknown'
-
-        if (errorCode === 'aborted' && suppressAbortErrorRef.current) return
-        if (errorCode === 'no-speech') {
-          setHeardText('...')
-          return
-        }
-
-        if (errorCode === 'network' && networkRetryCountRef.current < 2) {
-          networkRetryCountRef.current += 1
-          keepListeningRef.current = false
-          if (networkRetryCountRef.current === 1) {
-            preferLocalRecognitionRef.current = true
-            setHeardText('Network speech failed. Trying local engine...')
-          } else {
-            setHeardText('Retrying speech service...')
-          }
-          setTimeout(() => {
-            void startListening({ keepProgress: true })
-          }, 500)
-          return
-        }
-
-        if (errorCode === 'language-not-supported' && preferLocalRecognitionRef.current) {
-          preferLocalRecognitionRef.current = false
-          setHeardText('Local engine unavailable. Falling back...')
-          setTimeout(() => {
-            void startListening({ keepProgress: true })
-          }, 450)
-          return
-        }
-
-        handleRecognitionError(errorCode)
-      }
-
-      recognition.onend = () => {
-        if (!keepListeningRef.current || completedRef.current) return
-        suppressAbortErrorRef.current = false
-        try {
-          recognition.start()
-        } catch {
-          setTimeout(() => {
-            if (!keepListeningRef.current || completedRef.current) return
-            try {
-              recognition.start()
-            } catch {
-              handleRecognitionError('start-failed')
-            }
-          }, 240)
-        }
-      }
-
-      recognitionRef.current = recognition
-      keepListeningRef.current = true
-      suppressAbortErrorRef.current = false
-      setPhase('listening')
-
-      try {
-        recognition.start()
-      } catch {
-        handleRecognitionError('start-failed')
-      }
-    } finally {
-      startLockRef.current = false
+      recorder.start(2200)
+    } catch {
+      setError('Could not start microphone recording')
+      setPhase('error')
+      stopListening()
     }
   }
 
   function reset() {
     clearInterval(timerRef.current)
-    stopListening({ manual: true })
+    stopListening()
     currentWordRef.current = 0
     completedRef.current = false
-    networkRetryCountRef.current = 0
     setCurrentWord(0)
     setCode(null)
     setError('')
@@ -374,7 +352,7 @@ function ReadPage() {
               Begin recitation
             </button>
             <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
-              Speak each word in order to advance
+              Whisper mode: speak each word in order to advance
             </p>
           </div>
         )}
@@ -446,7 +424,7 @@ function ReadPage() {
         {phase === 'unsupported' && (
           <div className="text-center">
             <p className="text-red-400 text-xs tracking-widest uppercase mb-4">
-              Speech recognition is not supported in this browser
+              Browser audio capture is not supported here
             </p>
             <button
               onClick={() => router.push('/vault')}
