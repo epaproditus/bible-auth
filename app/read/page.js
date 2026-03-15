@@ -32,21 +32,19 @@ function ReadPage() {
   const [error, setError] = useState('')
   const [heardText, setHeardText] = useState('')
   const [remaining, setRemaining] = useState(30)
+  const [animationSeed, setAnimationSeed] = useState(0)
+
   const timerRef = useRef(null)
   const currentWordRef = useRef(0)
   const recognitionRef = useRef(null)
-  const shouldRestartRecognitionRef = useRef(false)
+  const keepListeningRef = useRef(false)
+  const suppressAbortErrorRef = useRef(false)
   const completedRef = useRef(false)
 
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current)
-      shouldRestartRecognitionRef.current = false
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop()
-        } catch {}
-      }
+      stopListening({ manual: true })
     }
   }, [])
 
@@ -55,7 +53,10 @@ function ReadPage() {
     setError('')
     try {
       const res = await fetch(`/api/totp?service=${serviceId}`)
-      if (res.status === 401) { router.push('/'); return }
+      if (res.status === 401) {
+        router.push('/')
+        return
+      }
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.code) {
         setError(data.error || 'Could not retrieve code')
@@ -81,19 +82,41 @@ function ReadPage() {
     }
   }
 
-  function stopListening() {
-    shouldRestartRecognitionRef.current = false
-    if (recognitionRef.current) {
+  function stopListening({ manual = false } = {}) {
+    keepListeningRef.current = false
+    suppressAbortErrorRef.current = manual
+    const recognition = recognitionRef.current
+    recognitionRef.current = null
+    if (recognition) {
       try {
-        recognitionRef.current.stop()
+        recognition.stop()
       } catch {}
     }
+  }
+
+  function handleRecognitionError(errorCode) {
+    const message =
+      errorCode === 'not-allowed' || errorCode === 'service-not-allowed'
+        ? 'Microphone permission denied. Allow access and try again.'
+        : errorCode === 'audio-capture'
+          ? 'No microphone was found on this device.'
+          : errorCode === 'network'
+            ? 'Speech recognition network error. Check your connection and retry.'
+            : errorCode === 'language-not-supported'
+              ? 'Speech recognition language is not supported in this browser.'
+              : errorCode === 'start-failed'
+                ? 'Could not start speech recognition. Try refreshing and retry.'
+                : `Speech recognition error (${errorCode}). Try again.`
+
+    keepListeningRef.current = false
+    setError(message)
+    setPhase('error')
   }
 
   function completePassage() {
     if (completedRef.current) return
     completedRef.current = true
-    stopListening()
+    stopListening({ manual: true })
     setPhase('done')
     fetchCode()
   }
@@ -121,11 +144,16 @@ function ReadPage() {
   }
 
   function startListening() {
+    clearInterval(timerRef.current)
+    stopListening({ manual: true })
     setError('')
     setHeardText('')
     setCode(null)
     setRemaining(30)
     completedRef.current = false
+    currentWordRef.current = 0
+    setCurrentWord(0)
+    setAnimationSeed(s => s + 1)
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
@@ -133,64 +161,70 @@ function ReadPage() {
       return
     }
 
-    if (!recognitionRef.current) {
-      const recognition = new SpeechRecognition()
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = 'en-US'
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognition.maxAlternatives = 1
 
-      recognition.onresult = event => {
-        const chunk = Array.from(event.results)
-          .slice(event.resultIndex)
-          .map(result => result[0]?.transcript || '')
-          .join(' ')
-          .trim()
-
-        if (!chunk) return
-        setHeardText(chunk)
-        advanceFromSpeech(chunk)
+    recognition.onresult = event => {
+      let finalChunk = ''
+      let interimChunk = ''
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript?.trim() || ''
+        if (!transcript) continue
+        if (event.results[i].isFinal) finalChunk += ` ${transcript}`
+        else interimChunk += ` ${transcript}`
       }
 
-      recognition.onerror = event => {
-        const message =
-          event.error === 'not-allowed'
-            ? 'Mic access is blocked. Allow microphone permission and try again.'
-            : event.error === 'audio-capture'
-              ? 'No microphone was found.'
-              : event.error === 'no-speech'
-                ? 'No speech was detected. Keep the mic close and try again.'
-                : 'Speech recognition failed. Try again.'
-        setError(message)
-        setPhase('error')
-        shouldRestartRecognitionRef.current = false
-      }
-
-      recognition.onend = () => {
-        if (shouldRestartRecognitionRef.current && !completedRef.current) {
-          setTimeout(() => {
-            if (!shouldRestartRecognitionRef.current || completedRef.current) return
-            try {
-              recognition.start()
-            } catch {}
-          }, 150)
-        }
-      }
-
-      recognitionRef.current = recognition
+      const chunk = (finalChunk || interimChunk).trim()
+      if (!chunk) return
+      setHeardText(chunk)
+      advanceFromSpeech(chunk)
     }
 
-    currentWordRef.current = 0
-    setCurrentWord(0)
-    shouldRestartRecognitionRef.current = true
+    recognition.onerror = event => {
+      const errorCode = event.error || 'unknown'
+      if (errorCode === 'aborted' && suppressAbortErrorRef.current) return
+      if (errorCode === 'no-speech') {
+        setHeardText('...')
+        return
+      }
+      handleRecognitionError(errorCode)
+    }
+
+    recognition.onend = () => {
+      if (!keepListeningRef.current || completedRef.current) return
+      suppressAbortErrorRef.current = false
+      try {
+        recognition.start()
+      } catch {
+        setTimeout(() => {
+          if (!keepListeningRef.current || completedRef.current) return
+          try {
+            recognition.start()
+          } catch {
+            handleRecognitionError('start-failed')
+          }
+        }, 240)
+      }
+    }
+
+    recognitionRef.current = recognition
+    keepListeningRef.current = true
+    suppressAbortErrorRef.current = false
     setPhase('listening')
+
     try {
-      recognitionRef.current.start()
-    } catch {}
+      recognition.start()
+    } catch {
+      handleRecognitionError('start-failed')
+    }
   }
 
   function reset() {
     clearInterval(timerRef.current)
-    stopListening()
+    stopListening({ manual: true })
     currentWordRef.current = 0
     completedRef.current = false
     setCurrentWord(0)
@@ -198,45 +232,52 @@ function ReadPage() {
     setError('')
     setHeardText('')
     setRemaining(30)
+    setAnimationSeed(s => s + 1)
     setPhase('idle')
   }
 
-  if (!service) return (
-    <main className="min-h-screen bg-black flex items-center justify-center">
-      <p className="text-[#c8a84b44] text-xs tracking-widest">Unknown service</p>
-    </main>
-  )
+  if (!service) {
+    return (
+      <main className="min-h-screen bg-black flex items-center justify-center">
+        <p className="text-[#c8a84b44] text-xs tracking-widest">Unknown service</p>
+      </main>
+    )
+  }
 
   const progress = Math.round((currentWord / words.length) * 100)
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-[#f4e7b4]">
-      <div className="w-full max-w-3xl rounded-2xl border border-[#f4e7b433] bg-[#02050acc] backdrop-blur-xl p-6 md:p-8 shadow-[0_0_40px_#5cc8ff22]">
-
-        {/* Header */}
+    <main className="min-h-screen bg-black flex flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-2xl">
         <div className="mb-8 flex items-center justify-between">
           <button
             onClick={() => router.push('/vault')}
-            className="text-[#7fd9ff99] hover:text-[#b7ecff] text-xs tracking-[0.2em] uppercase transition-colors"
+            className="text-[#c8a84b33] hover:text-[#c8a84b66] text-xs tracking-widest uppercase transition-colors"
           >
-            Return to hangar
+            ← Back
           </button>
           <div className="text-right">
-            <p className="text-[#f4e7b4] text-xs tracking-[0.2em] uppercase">Channel: {service.name}</p>
-            <p className="text-[#f4e7b488] text-xs tracking-wider mt-1">{verse.ref}</p>
+            <p className="text-[#c8a84b] text-xs tracking-[0.2em] uppercase">{service.name}</p>
+            <p className="text-[#c8a84b33] text-xs tracking-wider mt-1">{verse.ref}</p>
           </div>
         </div>
 
-        {/* Passage */}
-        <div className="mb-8 leading-10 select-none rounded-xl border border-[#f4e7b422] bg-[#0a0f17b3] p-4 md:p-6">
+        <div className="text-center mb-5">
+          <p className="text-[#c8a84b55] text-[10px] tracking-[0.38em] uppercase crawl-tag">
+            Recitation Sequence
+          </p>
+        </div>
+
+        <div className="mb-8 leading-10 select-none">
           {words.map((word, i) => (
             <span
-              key={i}
+              key={`${animationSeed}-${i}`}
+              style={{ animationDelay: `${Math.min(i, 26) * 28}ms` }}
               className={[
-                'inline-block mr-[6px] mb-[6px] px-1 rounded text-xl md:text-2xl transition-all duration-150 tracking-wide',
-                i < currentWord ? 'text-[#8ce3ff]' : '',
-                i === currentWord && phase === 'listening' ? 'bg-[#ffd86b] text-[#09111d] shadow-[0_0_14px_#ffd86baa]' : '',
-                i > currentWord ? 'text-[#3f4c66]' : '',
+                'word-in inline-block mr-[5px] mb-1 px-1 rounded text-xl transition-all duration-150 font-light tracking-wide',
+                i < currentWord ? 'text-[#c8a84b]' : '',
+                i === currentWord && phase === 'listening' ? 'bg-[#c8a84b] text-black' : '',
+                i > currentWord ? 'text-[#2a2a2a]' : '',
               ].join(' ')}
             >
               {word}
@@ -244,127 +285,141 @@ function ReadPage() {
           ))}
         </div>
 
-        {/* Progress bar */}
-        <div className="w-full h-1 rounded bg-[#1a2436] mb-8 overflow-hidden">
+        <div className="w-full h-px bg-[#111] mb-8">
           <div
-            className="h-full bg-gradient-to-r from-[#5cc8ff] via-[#ffd86b] to-[#5cc8ff] transition-all duration-150"
+            className="h-px bg-[#c8a84b] transition-all duration-150"
             style={{ width: `${progress}%` }}
           />
         </div>
 
-        {/* Idle */}
         {phase === 'idle' && (
           <div className="text-center">
             <button
               onClick={startListening}
-              className="border border-[#7fd9ff88] text-[#d8f4ff] px-10 py-3 text-xs tracking-[0.25em] uppercase hover:bg-[#7fd9ff1a] transition-colors"
+              className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors"
             >
-              Start voice gate
+              Begin recitation
             </button>
-            <p className="text-[#f4e7b477] text-xs tracking-wider mt-4">
-              Speak each word in order to advance the highlight
+            <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
+              Speak each word in order to advance
             </p>
           </div>
         )}
 
         {phase === 'listening' && (
           <div className="text-center">
-            <p className="text-[#7fd9ffcc] text-xs tracking-[0.25em] uppercase animate-pulse">
-              Listening...
-            </p>
-            <p className="text-[#f4e7b488] text-xs tracking-[0.2em] uppercase mt-3">
+            <p className="text-[#c8a84b66] text-xs tracking-[0.22em] uppercase animate-pulse">Listening</p>
+            <p className="text-[#c8a84b44] text-xs tracking-[0.2em] uppercase mt-3">
               {currentWord < words.length
                 ? `${words.length - currentWord} words remaining`
                 : 'Complete'}
             </p>
-            <p className="text-[#f4e7b455] text-xs tracking-wider mt-2">
+            <p className="text-[#c8a84b22] text-xs tracking-wider mt-2">
               Heard: {heardText || '...'}
             </p>
             <button
               onClick={reset}
-              className="mt-5 text-xs tracking-[0.2em] uppercase text-[#f4e7b488] hover:text-[#f4e7b4] transition-colors"
+              className="mt-5 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
             >
-              Abort run
+              Stop
             </button>
           </div>
         )}
 
-        {/* Fetching */}
         {phase === 'done' && (
-          <div className="text-center text-[#7fd9ffcc] text-xs tracking-widest uppercase animate-pulse">
+          <div className="text-center text-[#c8a84b44] text-xs tracking-widest uppercase animate-pulse">
             Retrieving code...
           </div>
         )}
 
-        {/* Revealed */}
         {phase === 'revealed' && code && (
           <div className="text-center">
-            <p className="text-xs tracking-[0.3em] text-[#7fd9ff88] uppercase mb-3">
+            <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-3">
               {service.name} · one-time code
             </p>
-            <div className="text-5xl font-light tracking-[0.4em] text-[#ffd86b] mb-5 font-mono">
+            <div className="text-5xl font-light tracking-[0.4em] text-[#c8a84b] mb-5 font-mono">
               {code}
             </div>
             <div className="flex items-center justify-center gap-3 mb-6">
-              <div className="w-32 h-1 rounded bg-[#18263a] overflow-hidden">
+              <div className="w-28 h-px bg-[#1a1a1a]">
                 <div
-                  className="h-full bg-gradient-to-r from-[#5cc8ff] to-[#ffd86b] transition-all duration-1000"
+                  className="h-px bg-[#c8a84b66] transition-all duration-1000"
                   style={{ width: `${(remaining / 30) * 100}%` }}
                 />
               </div>
-              <span className="text-[#f4e7b499] text-xs font-mono">{remaining}s</span>
+              <span className="text-[#c8a84b33] text-xs font-mono">{remaining}s</span>
             </div>
             <button
               onClick={() => router.push('/vault')}
-              className="text-xs tracking-[0.2em] text-[#f4e7b466] hover:text-[#f4e7b4] uppercase transition-colors"
+              className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
             >
               Done
             </button>
           </div>
         )}
 
-        {/* Expired */}
         {phase === 'expired' && (
           <div className="text-center">
-            <p className="text-[#f4e7b488] text-xs tracking-widest uppercase mb-4">Code expired</p>
+            <p className="text-[#c8a84b33] text-xs tracking-widest uppercase mb-4">Code expired</p>
             <button
               onClick={reset}
-              className="border border-[#7fd9ff66] text-[#d8f4ff] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:bg-[#7fd9ff1a] transition-colors"
+              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
-              Run passage again
+              Read again
             </button>
           </div>
         )}
 
         {phase === 'unsupported' && (
           <div className="text-center">
-            <p className="text-red-300 text-xs tracking-widest uppercase mb-4">
-              This browser does not support speech recognition
+            <p className="text-red-400 text-xs tracking-widest uppercase mb-4">
+              Speech recognition is not supported in this browser
             </p>
             <button
               onClick={() => router.push('/vault')}
-              className="text-xs tracking-[0.2em] uppercase text-[#f4e7b488] hover:text-[#f4e7b4]"
+              className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
             >
-              Back to services
+              Back
             </button>
           </div>
         )}
 
         {phase === 'error' && (
           <div className="text-center">
-            <p className="text-red-300 text-xs tracking-widest uppercase mb-4">
+            <p className="text-red-400 text-xs tracking-widest uppercase mb-4">
               {error || 'Could not retrieve code'}
             </p>
             <button
               onClick={startListening}
-              className="border border-[#7fd9ff66] text-[#d8f4ff] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:bg-[#7fd9ff1a] transition-colors"
+              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
-              Retry voice gate
+              Try again
             </button>
           </div>
         )}
-
       </div>
+
+      <style jsx>{`
+        @keyframes crawlTagIn {
+          0% { opacity: 0; letter-spacing: 0.55em; transform: translateY(6px); }
+          100% { opacity: 1; letter-spacing: 0.38em; transform: translateY(0); }
+        }
+
+        @keyframes crawlWordIn {
+          0% { opacity: 0; transform: translateY(14px) scale(0.94) skewX(-7deg); }
+          100% { opacity: 1; transform: translateY(0) scale(1) skewX(0deg); }
+        }
+
+        .crawl-tag {
+          opacity: 0;
+          animation: crawlTagIn 620ms ease-out forwards;
+        }
+
+        .word-in {
+          opacity: 0;
+          animation: crawlWordIn 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+      `}</style>
     </main>
   )
 }
