@@ -458,10 +458,10 @@ function ReadPage() {
     return (
       <main className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <p className="text-[#c8a84b44] text-xs tracking-widest">
+          <p className="text-[#c8a84b88] text-xs tracking-widest">
             Custom service unavailable
           </p>
-          <p className="text-[#c8a84b22] text-xs tracking-wider mt-3">
+          <p className="text-[#c8a84b66] text-xs tracking-wider mt-3">
             Unlock custom services in vault and try again
           </p>
         </div>
@@ -477,20 +477,20 @@ function ReadPage() {
         <div className="mb-8 flex items-center justify-between">
           <button
             onClick={() => router.push('/vault')}
-            className="text-[#c8a84b33] hover:text-[#c8a84b66] text-xs tracking-widest uppercase transition-colors"
+            className="text-[#c8a84b77] hover:text-[#c8a84b66] text-xs tracking-widest uppercase transition-colors"
           >
             ← Back
           </button>
           <div className="text-right">
             <p className="text-[#c8a84b] text-xs tracking-[0.2em] uppercase">{service.name}</p>
-            <p className="text-[#c8a84b33] text-xs tracking-wider mt-1">
+            <p className="text-[#c8a84b77] text-xs tracking-wider mt-1">
               {verse?.ref || (verseStatus === 'loading' ? 'Loading verse...' : 'Verse unavailable')}
             </p>
           </div>
         </div>
 
         <div className="text-center mb-5">
-          <p className="text-[#c8a84b55] text-[10px] tracking-[0.38em] uppercase crawl-tag">
+          <p className="text-[#c8a84baa] text-[10px] tracking-[0.38em] uppercase crawl-tag">
             Recitation Sequence
           </p>
         </div>
@@ -528,7 +528,7 @@ function ReadPage() {
             >
               {verseStatus === 'loading' ? 'Loading verse...' : 'Begin recitation'}
             </button>
-            <p className="text-[#c8a84b22] text-xs tracking-wider mt-4">
+            <p className="text-[#c8a84b66] text-xs tracking-wider mt-4">
               {verseStatus === 'ready'
                 ? 'Server transcription mode: speak each word in order to advance'
                 : verseStatus === 'loading'
@@ -538,7 +538,7 @@ function ReadPage() {
             {verseStatus === 'error' && (
               <button
                 onClick={() => setVerseReloadToken((v) => v + 1)}
-                className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+                className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors"
               >
                 Retry verse load
               </button>
@@ -549,17 +549,17 @@ function ReadPage() {
         {phase === 'listening' && (
           <div className="text-center">
             <p className="text-[#c8a84b66] text-xs tracking-[0.22em] uppercase animate-pulse">Listening</p>
-            <p className="text-[#c8a84b44] text-xs tracking-[0.2em] uppercase mt-3">
+            <p className="text-[#c8a84b88] text-xs tracking-[0.2em] uppercase mt-3">
               {currentWord < words.length
                 ? `${words.length - currentWord} words remaining`
                 : 'Complete'}
             </p>
-            <p className="text-[#c8a84b22] text-xs tracking-wider mt-2">
+            <p className="text-[#c8a84b66] text-xs tracking-wider mt-2">
               Heard: {heardText || '...'}
             </p>
             <button
               onClick={reset}
-              className="mt-5 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+              className="mt-5 text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors"
             >
               Stop
             </button>
@@ -567,7 +567,7 @@ function ReadPage() {
         )}
 
         {phase === 'done' && (
-          <div className="text-center text-[#c8a84b44] text-xs tracking-widest uppercase animate-pulse">
+          <div className="text-center text-[#c8a84b88] text-xs tracking-widest uppercase animate-pulse">
             Retrieving code...
           </div>
         )}
@@ -575,7 +575,7 @@ function ReadPage() {
         {phase === 'revealed' && code && (
           <div className="text-center">
             {/* TOTP code */}
-            <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-3">
+            <p className="text-xs tracking-[0.3em] text-[#c8a84b88] uppercase mb-3">
               {service.name} · one-time code
             </p>
             <div className="text-5xl font-light tracking-[0.4em] text-[#c8a84b] mb-4 font-mono">
@@ -586,15 +586,15 @@ function ReadPage() {
                 <div className="h-px bg-[#c8a84b66] transition-all duration-1000"
                   style={{ width: `${(remaining / 30) * 100}%` }} />
               </div>
-              <span className="text-[#c8a84b33] text-xs font-mono">{remaining}s</span>
+              <span className="text-[#c8a84b77] text-xs font-mono">{remaining}s</span>
             </div>
             <div className="flex items-center justify-center gap-4 mb-8">
               <button onClick={() => { void copyCode() }}
-                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors">
+                className="text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors">
                 {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy code'}
               </button>
               <button onClick={() => router.push('/vault')}
-                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors">
+                className="text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors">
                 Done
               </button>
             </div>
@@ -602,7 +602,7 @@ function ReadPage() {
             {/* Sudo PAM token */}
             {sudoToken && (
               <div className="border border-[#c8a84b22] p-5 mt-2">
-                <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-3">
+                <p className="text-xs tracking-[0.3em] text-[#c8a84b88] uppercase mb-3">
                   sudo token · run bible_auth_check
                 </p>
                 <div className="text-xs font-mono text-[#c8a84b88] break-all mb-3 px-2">
@@ -613,7 +613,7 @@ function ReadPage() {
                     <div className="h-px bg-[#c8a84b33] transition-all duration-1000"
                       style={{ width: `${(sudoRemaining / 60) * 100}%` }} />
                   </div>
-                  <span className="text-[#c8a84b22] text-xs font-mono">{sudoRemaining}s</span>
+                  <span className="text-[#c8a84b66] text-xs font-mono">{sudoRemaining}s</span>
                   <button
                     onClick={async () => {
                       try {
@@ -625,7 +625,7 @@ function ReadPage() {
                         setTimeout(() => setSudoCopyState('idle'), 1500)
                       }
                     }}
-                    className="text-xs tracking-[0.15em] text-[#c8a84b22] hover:text-[#c8a84b55] uppercase transition-colors"
+                    className="text-xs tracking-[0.15em] text-[#c8a84b66] hover:text-[#c8a84baa] uppercase transition-colors"
                   >
                     {sudoCopyState === 'copied' ? 'Copied' : sudoCopyState === 'failed' ? 'Failed' : 'Copy'}
                   </button>
@@ -633,17 +633,17 @@ function ReadPage() {
               </div>
             )}
             {!sudoToken && sudoRemaining === 0 && (
-              <p className="text-[#c8a84b22] text-xs tracking-widest uppercase mt-2">sudo token expired</p>
+              <p className="text-[#c8a84b66] text-xs tracking-widest uppercase mt-2">sudo token expired</p>
             )}
           </div>
         )}
 
         {phase === 'expired' && (
           <div className="text-center">
-            <p className="text-[#c8a84b33] text-xs tracking-widest uppercase mb-4">Code expired</p>
+            <p className="text-[#c8a84b77] text-xs tracking-widest uppercase mb-4">Code expired</p>
             <button
               onClick={reset}
-              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
+              className="border border-[#c8a84b22] text-[#c8a84b88] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
               Read again
             </button>
@@ -657,7 +657,7 @@ function ReadPage() {
             </p>
             <button
               onClick={() => router.push('/vault')}
-              className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+              className="text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors"
             >
               Back
             </button>
@@ -671,7 +671,7 @@ function ReadPage() {
             </p>
             <button
               onClick={() => { void startListening({ keepProgress: true }) }}
-              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
+              className="border border-[#c8a84b22] text-[#c8a84b88] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors"
             >
               Try again
             </button>

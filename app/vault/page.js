@@ -218,9 +218,9 @@ export default function VaultPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-8">
           <div>
-            <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-1">Vault</p>
+            <p className="text-xs tracking-[0.3em] text-[#c8a84b88] uppercase mb-1">Vault</p>
             <h1 className="text-2xl font-light text-[#c8a84b] tracking-widest">Authenticator services</h1>
-            <p className="text-xs text-[#c8a84b33] mt-2 tracking-wider">
+            <p className="text-xs text-[#c8a84b77] mt-2 tracking-wider">
               Recite the passage to reveal one-time codes
             </p>
           </div>
@@ -231,7 +231,7 @@ export default function VaultPage() {
               setCustomServices([])
               setVaultPassphrase('')
             }}
-            className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors mt-1"
+            className="text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors mt-1"
           >
             Lock vault
           </button>
@@ -239,7 +239,7 @@ export default function VaultPage() {
 
         {!vaultUnlocked && (
           <div className="border border-[#c8a84b22] bg-[#c8a84b05] p-4 mb-5">
-            <p className="text-[#c8a84b55] text-xs tracking-[0.2em] uppercase mb-3">
+            <p className="text-[#c8a84baa] text-xs tracking-[0.2em] uppercase mb-3">
               Unlock custom services
             </p>
             <div className="flex flex-col md:flex-row gap-2">
@@ -264,15 +264,15 @@ export default function VaultPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <div className="border border-[#c8a84b1f] bg-[#c8a84b05] px-4 py-3">
-            <p className="text-[#c8a84b33] text-[10px] uppercase tracking-[0.24em]">Items</p>
+            <p className="text-[#c8a84b77] text-[10px] uppercase tracking-[0.24em]">Items</p>
             <p className="text-[#c8a84b] text-lg mt-1">{customServices.length}</p>
           </div>
           <div className="border border-[#c8a84b1f] bg-[#c8a84b05] px-4 py-3">
-            <p className="text-[#c8a84b33] text-[10px] uppercase tracking-[0.24em]">Favorites</p>
+            <p className="text-[#c8a84b77] text-[10px] uppercase tracking-[0.24em]">Favorites</p>
             <p className="text-[#c8a84b] text-lg mt-1">{favoriteCount}</p>
           </div>
           <div className="border border-[#c8a84b1f] bg-[#c8a84b05] px-4 py-3">
-            <p className="text-[#c8a84b33] text-[10px] uppercase tracking-[0.24em]">Recently used</p>
+            <p className="text-[#c8a84b77] text-[10px] uppercase tracking-[0.24em]">Recently used</p>
             <p className="text-[#c8a84b] text-lg mt-1">{seenCount}</p>
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function VaultPage() {
 
         {showAdd && (
           <form onSubmit={addCustomService} className="border border-[#c8a84b1a] bg-[#c8a84b04] p-4 mb-4 space-y-3">
-            <p className="text-[#c8a84b55] text-xs tracking-[0.2em] uppercase">New custom service</p>
+            <p className="text-[#c8a84baa] text-xs tracking-[0.2em] uppercase">New custom service</p>
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -319,7 +319,7 @@ export default function VaultPage() {
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}
-                className="border border-[#c8a84b22] px-3 py-2 text-[#c8a84b44] text-xs tracking-[0.16em] uppercase hover:border-[#c8a84b33] hover:text-[#c8a84b66]"
+                className="border border-[#c8a84b22] px-3 py-2 text-[#c8a84b88] text-xs tracking-[0.16em] uppercase hover:border-[#c8a84b33] hover:text-[#c8a84b66]"
               >
                 Cancel
               </button>
@@ -337,7 +337,7 @@ export default function VaultPage() {
 
         <div className="border border-[#c8a84b1a] divide-y divide-[#c8a84b12]">
           {visibleServices.length === 0 && (
-            <div className="px-4 py-10 text-center text-[#c8a84b33] text-xs tracking-[0.2em] uppercase">
+            <div className="px-4 py-10 text-center text-[#c8a84b77] text-xs tracking-[0.2em] uppercase">
               No matching services
             </div>
           )}
@@ -351,10 +351,10 @@ export default function VaultPage() {
                 <p className="text-[#c8a84b] text-sm tracking-wider font-medium truncate">
                   {service.name}
                 </p>
-                <p className="text-[#c8a84b44] text-xs tracking-wider mt-1 truncate">
+                <p className="text-[#c8a84b88] text-xs tracking-wider mt-1 truncate">
                   {service.description}
                 </p>
-                <div className="mt-2 flex items-center gap-3 text-[10px] tracking-[0.18em] uppercase text-[#c8a84b33]">
+                <div className="mt-2 flex items-center gap-3 text-[10px] tracking-[0.18em] uppercase text-[#c8a84b77]">
                   <span>Custom</span>
                   <span>Last used {hydrated ? formatLastUsed(service.seenAt) : '...'}</span>
                 </div>
@@ -363,7 +363,7 @@ export default function VaultPage() {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => toggleFavorite(service.id)}
-                  className="h-9 w-9 border border-[#c8a84b22] text-[#c8a84b55] hover:text-[#c8a84b] hover:border-[#c8a84b44] transition-colors"
+                  className="h-9 w-9 border border-[#c8a84b22] text-[#c8a84baa] hover:text-[#c8a84b] hover:border-[#c8a84b44] transition-colors"
                   aria-label={service.pinned ? `Unfavorite ${service.name}` : `Favorite ${service.name}`}
                 >
                   {service.pinned ? '★' : '☆'}
@@ -371,7 +371,7 @@ export default function VaultPage() {
                 <button
                   onClick={() => { void deleteCustomService(service.id) }}
                   disabled={busy}
-                  className="h-9 px-3 border border-[#c8a84b22] text-[#c8a84b44] text-xs tracking-[0.12em] uppercase hover:border-red-400/40 hover:text-red-300 transition-colors disabled:opacity-40"
+                  className="h-9 px-3 border border-[#c8a84b22] text-[#c8a84b88] text-xs tracking-[0.12em] uppercase hover:border-red-400/40 hover:text-red-300 transition-colors disabled:opacity-40"
                 >
                   Delete
                 </button>

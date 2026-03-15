@@ -219,8 +219,8 @@ export default function SudoPage() {
       <div className="w-full max-w-lg">
 
         <div className="mb-6 text-center">
-          <p className="text-xs tracking-[0.3em] text-[#c8a84b44] uppercase mb-1">sudo authentication</p>
-          <p className="text-[#c8a84b22] text-xs tracking-wider">
+          <p className="text-xs tracking-[0.3em] text-[#c8a84b88] uppercase mb-1">sudo authentication</p>
+          <p className="text-[#c8a84b66] text-xs tracking-wider">
             {verse?.ref || (verseStatus === 'loading' ? 'Loading verse...' : 'Verse unavailable')}
           </p>
         </div>
@@ -246,7 +246,7 @@ export default function SudoPage() {
               className="border border-[#c8a84b44] text-[#c8a84b] px-10 py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
               {verseStatus === 'loading' ? 'Loading verse...' : 'Begin reading'}
             </button>
-            <p className="text-[#c8a84b22] text-xs tracking-wider mt-3">
+            <p className="text-[#c8a84b66] text-xs tracking-wider mt-3">
               {verseStatus === 'ready'
                 ? 'Read the passage aloud'
                 : verseStatus === 'loading'
@@ -255,7 +255,7 @@ export default function SudoPage() {
             </p>
             {verseStatus === 'error' && (
               <button onClick={() => setVerseReloadToken((v) => v + 1)}
-                className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors">
+                className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84b66] uppercase transition-colors">
                 Retry verse load
               </button>
             )}
@@ -265,16 +265,16 @@ export default function SudoPage() {
         {phase === 'listening' && (
           <div className="text-center">
             <p className="text-[#c8a84b66] text-xs tracking-[0.22em] uppercase animate-pulse">Listening</p>
-            <p className="text-[#c8a84b22] text-xs tracking-wider mt-2">{heardText}</p>
+            <p className="text-[#c8a84b66] text-xs tracking-wider mt-2">{heardText}</p>
             <button onClick={() => { stopListening(); setPhase('idle') }}
-              className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b55] uppercase transition-colors">
+              className="mt-4 text-xs tracking-[0.2em] text-[#c8a84b66] hover:text-[#c8a84baa] uppercase transition-colors">
               Stop
             </button>
           </div>
         )}
 
         {phase === 'done' && (
-          <p className="text-center text-[#c8a84b44] text-xs tracking-widest uppercase animate-pulse">Authenticating...</p>
+          <p className="text-center text-[#c8a84b88] text-xs tracking-widest uppercase animate-pulse">Authenticating...</p>
         )}
 
         {phase === 'success' && (
@@ -287,7 +287,7 @@ export default function SudoPage() {
               {phase === 'unsupported' ? 'Microphone not supported in this browser' : message}
             </p>
             <button onClick={startListening}
-              className="border border-[#c8a84b22] text-[#c8a84b44] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors">
+              className="border border-[#c8a84b22] text-[#c8a84b88] px-8 py-2 text-xs tracking-[0.2em] uppercase hover:border-[#c8a84b44] hover:text-[#c8a84b] transition-colors">
               Try again
             </button>
           </div>
