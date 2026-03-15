@@ -52,8 +52,10 @@ function ReadPage() {
   const [heardText, setHeardText] = useState('')
   const [remaining, setRemaining] = useState(30)
   const [animationSeed, setAnimationSeed] = useState(0)
+  const [copyState, setCopyState] = useState('idle') // idle | copied | failed
 
   const timerRef = useRef(null)
+  const copyTimerRef = useRef(null)
   const currentWordRef = useRef(0)
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
@@ -66,6 +68,7 @@ function ReadPage() {
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current)
+      clearTimeout(copyTimerRef.current)
       stopListening()
     }
   }, [])
@@ -85,6 +88,7 @@ function ReadPage() {
         setPhase('error')
         return
       }
+      setCopyState('idle')
       setCode(data.code)
       setRemaining(data.remaining)
       setPhase('revealed')
@@ -282,6 +286,7 @@ function ReadPage() {
 
   function reset() {
     clearInterval(timerRef.current)
+    clearTimeout(copyTimerRef.current)
     stopListening()
     currentWordRef.current = 0
     completedRef.current = false
@@ -290,8 +295,37 @@ function ReadPage() {
     setError('')
     setHeardText('')
     setRemaining(30)
+    setCopyState('idle')
     setAnimationSeed(s => s + 1)
     setPhase('idle')
+  }
+
+  async function copyCode() {
+    if (!code) return
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = code
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
+
+      setCopyState('copied')
+      clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopyState('idle'), 1500)
+    } catch {
+      setCopyState('failed')
+      clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopyState('idle'), 1500)
+    }
   }
 
   if (!service) {
@@ -407,12 +441,20 @@ function ReadPage() {
               </div>
               <span className="text-[#c8a84b33] text-xs font-mono">{remaining}s</span>
             </div>
-            <button
-              onClick={() => router.push('/vault')}
-              className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
-            >
-              Done
-            </button>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => { void copyCode() }}
+                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+              >
+                {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy code'}
+              </button>
+              <button
+                onClick={() => router.push('/vault')}
+                className="text-xs tracking-[0.2em] text-[#c8a84b22] hover:text-[#c8a84b66] uppercase transition-colors"
+              >
+                Done
+              </button>
+            </div>
           </div>
         )}
 
