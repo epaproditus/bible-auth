@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { createGuardrails, generate } from 'otplib'
 import { VERSES } from '@/lib/verses'
 import { SERVICES } from '@/lib/services'
+import { getUnlockedSessionServices } from '@/lib/custom-vault'
 
 function normalizeWord(word) {
   return word.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -35,11 +37,32 @@ function extensionForMime(type) {
   return 'webm'
 }
 
+function resolveSecret(rawSecret) {
+  const trimmed = rawSecret.trim()
+
+  if (trimmed.toLowerCase().startsWith('otpauth://')) {
+    try {
+      const parsed = new URL(trimmed)
+      const secretFromUri = parsed.searchParams.get('secret')
+      if (!secretFromUri) return null
+      return secretFromUri.replace(/\s+/g, '').toUpperCase()
+    } catch {
+      return null
+    }
+  }
+
+  return trimmed.replace(/\s+/g, '').toUpperCase()
+}
+
 function ReadPage() {
   const router = useRouter()
   const params = useSearchParams()
   const serviceId = params.get('service')
-  const service = SERVICES.find(s => s.id === serviceId)
+  const source = params.get('source') || 'env'
+  const [customServices, setCustomServices] = useState([])
+  const service = source === 'custom'
+    ? customServices.find((s) => s.id === serviceId)
+    : SERVICES.find((s) => s.id === serviceId)
 
   const [verse] = useState(() => VERSES[Math.floor(Math.random() * VERSES.length)])
   const words = verse.text.split(' ')
@@ -70,6 +93,10 @@ function ReadPage() {
   const completedRef = useRef(false)
 
   useEffect(() => {
+    setCustomServices(getUnlockedSessionServices())
+  }, [])
+
+  useEffect(() => {
     return () => {
       clearInterval(timerRef.current)
       clearInterval(sudoTimerRef.current)
@@ -81,22 +108,56 @@ function ReadPage() {
   async function fetchCode() {
     clearInterval(timerRef.current)
     clearInterval(sudoTimerRef.current)
+    setSudoToken(null)
+    setSudoRemaining(60)
+    setSudoCopyState('idle')
     setError('')
     try {
-      const res = await fetch(`/api/totp?service=${serviceId}`)
-      if (res.status === 401) {
-        router.push('/')
-        return
+      let nextCode = null
+      let nextRemaining = 30
+
+      if (source === 'custom') {
+        if (!service?.secret) {
+          setError('Custom service is unavailable. Unlock vault and try again.')
+          setPhase('error')
+          return
+        }
+
+        const secret = resolveSecret(service.secret)
+        if (!secret) {
+          setError('Custom service secret is invalid')
+          setPhase('error')
+          return
+        }
+
+        try {
+          const compatibilityGuardrails = createGuardrails({ MIN_SECRET_BYTES: 10 })
+          nextCode = await generate({ secret, guardrails: compatibilityGuardrails })
+          nextRemaining = 30 - (Math.floor(Date.now() / 1000) % 30)
+        } catch {
+          setError('Custom service secret format is invalid')
+          setPhase('error')
+          return
+        }
+      } else {
+        const res = await fetch(`/api/totp?service=${serviceId}`)
+        if (res.status === 401) {
+          router.push('/')
+          return
+        }
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.code) {
+          setError(data.error || 'Could not retrieve code')
+          setPhase('error')
+          return
+        }
+        nextCode = data.code
+        nextRemaining = data.remaining
       }
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.code) {
-        setError(data.error || 'Could not retrieve code')
-        setPhase('error')
-        return
-      }
+
       setCopyState('idle')
-      setCode(data.code)
-      setRemaining(data.remaining)
+      setCode(nextCode)
+      setRemaining(nextRemaining)
 
       // Issue sudo PAM token and write to temp file for PAM module
       try {
@@ -245,9 +306,13 @@ function ReadPage() {
 
   async function startListening({ keepProgress = false } = {}) {
     clearInterval(timerRef.current)
+    clearInterval(sudoTimerRef.current)
     stopListening()
     setError('')
     setCode(null)
+    setSudoToken(null)
+    setSudoRemaining(60)
+    setSudoCopyState('idle')
     setRemaining(30)
     chunkQueueRef.current = []
     recordedChunksRef.current = []
@@ -320,12 +385,16 @@ function ReadPage() {
 
   function reset() {
     clearInterval(timerRef.current)
+    clearInterval(sudoTimerRef.current)
     clearTimeout(copyTimerRef.current)
     stopListening()
     currentWordRef.current = 0
     completedRef.current = false
     setCurrentWord(0)
     setCode(null)
+    setSudoToken(null)
+    setSudoRemaining(60)
+    setSudoCopyState('idle')
     setError('')
     setHeardText('')
     setRemaining(30)
@@ -365,7 +434,16 @@ function ReadPage() {
   if (!service) {
     return (
       <main className="min-h-screen bg-black flex items-center justify-center">
-        <p className="text-[#c8a84b44] text-xs tracking-widest">Unknown service</p>
+        <div className="text-center">
+          <p className="text-[#c8a84b44] text-xs tracking-widest">
+            {source === 'custom' ? 'Custom service unavailable' : 'Unknown service'}
+          </p>
+          {source === 'custom' && (
+            <p className="text-[#c8a84b22] text-xs tracking-wider mt-3">
+              Unlock custom services in vault and try again
+            </p>
+          )}
+        </div>
       </main>
     )
   }
