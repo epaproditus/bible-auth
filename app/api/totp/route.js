@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generate } from 'otplib'
+import { createGuardrails, generate } from 'otplib'
 import { verifyToken } from '@/lib/auth'
 import { SERVICES } from '@/lib/services'
 import { cookies } from 'next/headers'
@@ -54,7 +54,8 @@ export async function GET(req) {
 
   let code
   try {
-    code = await generate({ secret })
+    const compatibilityGuardrails = createGuardrails({ MIN_SECRET_BYTES: 10 })
+    code = await generate({ secret, guardrails: compatibilityGuardrails })
   } catch {
     return NextResponse.json({ error: 'Invalid TOTP secret format' }, { status: 500 })
   }
