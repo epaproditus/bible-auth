@@ -26,28 +26,29 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+      <div className="imperial-frame w-full max-w-md rounded-2xl p-8">
         <div className="mb-10 text-center">
-          <p className="text-xs tracking-[0.3em] text-[#c8a84b66] uppercase mb-3">Authenticator</p>
-          <h1 className="text-2xl font-light text-[#c8a84b] tracking-widest">Bible Auth</h1>
+          <p className="text-xs tracking-[0.32em] text-[#7fd9ffaa] uppercase mb-3">Outer Rim Access</p>
+          <h1 className="crawl-title text-2xl font-light">Bible Auth</h1>
+          <p className="text-[#f4e7b477] text-xs tracking-[0.22em] uppercase mt-3">Voice-gated TOTP vault</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Vault password"
-            className="w-full bg-transparent border border-[#c8a84b22] rounded px-4 py-3 text-[#c8a84b] placeholder-[#c8a84b33] text-sm tracking-wider focus:outline-none focus:border-[#c8a84b66]"
+            placeholder="Enter command code"
+            className="w-full bg-[#020814cc] border border-[#7fd9ff44] rounded px-4 py-3 text-[#d8f4ff] placeholder-[#d8f4ff55] text-sm tracking-[0.14em] uppercase focus:outline-none focus:border-[#7fd9ffcc]"
             autoFocus
           />
-          {error && <p className="text-red-400 text-xs tracking-wider text-center">{error}</p>}
+          {error && <p className="text-red-300 text-xs tracking-[0.14em] text-center uppercase">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full border border-[#c8a84b44] text-[#c8a84b] py-3 text-xs tracking-[0.2em] uppercase hover:bg-[#c8a84b11] transition-colors disabled:opacity-30"
+            className="w-full border border-[#7fd9ff77] text-[#d8f4ff] py-3 text-xs tracking-[0.25em] uppercase hover:bg-[#7fd9ff1c] transition-colors disabled:opacity-30"
           >
-            {loading ? 'Verifying...' : 'Enter'}
+            {loading ? 'Syncing...' : 'Unlock vault'}
           </button>
         </form>
       </div>

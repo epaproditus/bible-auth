@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --space-void: #030712;
+  --space-midnight: #0a1324;
+  --space-steel: #13233a;
+  --crawl-gold: #f4e7b4;
+  --lightsaber-blue: #7fd9ff;
+  --warning-amber: #ffd86b;
+  --text-primary: #f3edd2;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--space-void);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background:
+    radial-gradient(1200px 500px at 50% -10%, #0f2a4e 0%, transparent 55%),
+    radial-gradient(800px 400px at 10% 10%, #102f4f66 0%, transparent 65%),
+    radial-gradient(800px 400px at 90% 5%, #2a1e2f44 0%, transparent 65%),
+    linear-gradient(180deg, var(--space-midnight) 0%, var(--space-void) 100%);
+  color: var(--text-primary);
+  font-family: "Arial Narrow", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+  min-height: 100vh;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    radial-gradient(1px 1px at 12% 21%, #ffffffcc 0, transparent 100%),
+    radial-gradient(1px 1px at 66% 13%, #ffffffbb 0, transparent 100%),
+    radial-gradient(1px 1px at 78% 37%, #ffffffaa 0, transparent 100%),
+    radial-gradient(1px 1px at 29% 64%, #ffffffaa 0, transparent 100%),
+    radial-gradient(1px 1px at 81% 72%, #ffffffcc 0, transparent 100%),
+    radial-gradient(1px 1px at 39% 83%, #ffffff99 0, transparent 100%),
+    radial-gradient(1px 1px at 57% 49%, #ffffffaa 0, transparent 100%);
+}
+
+.crawl-title {
+  color: var(--crawl-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+  text-shadow: 0 0 18px #f4e7b466;
+}
+
+.imperial-frame {
+  border: 1px solid #f4e7b433;
+  background: linear-gradient(180deg, #07101ccc 0%, #040912cc 100%);
+  box-shadow: 0 0 32px #5cc8ff22, inset 0 0 20px #000000aa;
+  backdrop-filter: blur(8px);
 }
